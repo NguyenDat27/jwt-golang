@@ -22,14 +22,14 @@ var collection *mongo.Collection
 
 type Users struct {
 	ID       primitive.ObjectID `json:"_id,omitempty" bson:"_id,omitempty"`
-	Email    string             `json: "email"`
+	Email    string             `json: email`
 	Password string             `json: password`
 	FullName string             `json: fullname`
 	Refresh  string             `json: refresh,omitempty`
 }
 
 type Login struct {
-	Email    string `json: "email"`
+	Email    string `json: email`
 	Password string `json: password`
 }
 
@@ -179,13 +179,10 @@ func register(c *fiber.Ctx) error {
 	}
 
 	// Kiểm tra đã có người đăng ký chưa
-	count, err := collection.CountDocuments(context.Background(), bson.M{"email": user.Email})
-	if err != nil {
-		return err
-	}
-
-	if count > 0 {
-		return c.Status(400).JSON(fiber.Map{"error": "Email đã có người đăng ký!!!"})
+	var existUser Users
+	err := collection.FindOne(context.Background(), bson.M{"email": user.Email}).Decode(&existUser)
+	if err == nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Email đã được đăng ký!!!"})
 	}
 
 	// Mã hóa mật khẩu trước khi lưu vào cơ sở dữ liệu
@@ -202,7 +199,14 @@ func register(c *fiber.Ctx) error {
 
 	user.ID = registerResult.InsertedID.(primitive.ObjectID)
 
-	return c.Status(201).JSON(fiber.Map{"message": "Đăng ký thành công", "data": user})
+	return c.Status(201).JSON(fiber.Map{
+		"message": "Đăng ký thành công",
+		"data": map[string]interface{}{
+			"id":       user.ID,
+			"email":    user.Email,
+			"fullname": user.FullName,
+		},
+	})
 
 }
 
