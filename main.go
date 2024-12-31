@@ -24,6 +24,11 @@ type Users struct {
 	FullName string             `json: fullname`
 }
 
+type Login struct {
+	Email    string `json: "email"`
+	Password string `json: password`
+}
+
 func main() {
 
 	fmt.Println("JWT Token Authentication")
@@ -78,7 +83,40 @@ func me(c *fiber.Ctx) error {
 }
 
 func login(c *fiber.Ctx) error {
-	return c.Status(200).JSON(fiber.Map{"message": "Login Success"})
+
+	login := new(Login)
+
+	if err := c.BodyParser(login); err != nil {
+		return err
+	}
+
+	// Các thông tin không được để trống
+	requiredFields := map[string]string{
+		"Email":    login.Email,
+		"Mật khẩu": login.Password,
+	}
+
+	for field, value := range requiredFields {
+		if value == "" {
+			return c.Status(404).JSON(fiber.Map{"error": field + " không được để trống"})
+		}
+	}
+
+	// Kiểm tra email có tồn tại không
+	var existUser Users
+	err := collection.FindOne(context.Background(), bson.M{"email": login.Email}).Decode(&existUser)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Email chưa được đăng ký!!!"})
+	}
+
+	// Kiểm tra password có đúng không
+	err = bcrypt.CompareHashAndPassword([]byte(existUser.Password), []byte(login.Password))
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": "Thông tin tài khoản không đúng!!!"})
+	}
+
+	return c.Status(200).JSON(fiber.Map{"message": "Đăng nhập thành công", "data": existUser})
+	// return c.Status(200).JSON(fiber.Map{"message": "Login Success"})
 }
 
 func register(c *fiber.Ctx) error {
@@ -125,7 +163,7 @@ func register(c *fiber.Ctx) error {
 
 	user.ID = registerResult.InsertedID.(primitive.ObjectID)
 
-	return c.Status(201).JSON(user)
+	return c.Status(201).JSON(fiber.Map{"message": "Đăng ký thành công", "data": user})
 
 }
 
