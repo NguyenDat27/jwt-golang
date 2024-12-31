@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	// "github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -22,6 +25,7 @@ type Users struct {
 	Email    string             `json: "email"`
 	Password string             `json: password`
 	FullName string             `json: fullname`
+	Refresh  string             `json: refresh,omitempty`
 }
 
 type Login struct {
@@ -59,6 +63,10 @@ func main() {
 
 	app := fiber.New()
 
+	// app.Use(cors.New(cors.Config{
+	// 	AllowCredentials: true,
+	// }))
+
 	app.Get("/api/", me)
 	app.Post("/api/login", login)
 	app.Post("/api/register", register)
@@ -69,10 +77,6 @@ func main() {
 
 	if port == "" {
 		port = "5000"
-	}
-
-	if os.Getenv("ENV") == "production" {
-		app.Static("/", "./client/dist")
 	}
 
 	log.Fatal(app.Listen("0.0.0.0:" + port))
@@ -115,7 +119,42 @@ func login(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": "Thông tin tài khoản không đúng!!!"})
 	}
 
-	return c.Status(200).JSON(fiber.Map{"message": "Đăng nhập thành công", "data": existUser})
+	// Tạo access token
+	claimsAccess := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    existUser.ID.Hex(),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 12)), // 12h
+	})
+
+	accesstoken, err := claimsAccess.SignedString([]byte(os.Getenv("SECRET_ACCESS_KEY")))
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Không thể tạo access token"})
+	}
+
+	claimsRefresh := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    existUser.ID.Hex(),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour * 24 * 7)), // 7d
+	})
+
+	refreshtoken, err := claimsRefresh.SignedString([]byte(os.Getenv("SECRET_REFRESH_KEY")))
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Không thể tạo refresh token"})
+	}
+
+	// Lưu refresh token vào cơ sở dữ liệu
+	update := bson.M{"$set": bson.M{"refresh": refreshtoken}}
+	_, err = collection.UpdateOne(context.Background(), bson.M{"_id": existUser.ID}, update)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "Không thể lưu refresh token"})
+	}
+
+	return c.Status(200).JSON(fiber.Map{
+		"message": "Đăng nhập thành công",
+		"data": map[string]interface{}{
+			"id":       existUser.ID,
+			"email":    existUser.Email,
+			"fullname": existUser.FullName,
+		},
+		"token": accesstoken})
 	// return c.Status(200).JSON(fiber.Map{"message": "Login Success"})
 }
 
