@@ -114,7 +114,7 @@ func register(c *fiber.Ctx) error {
 	// Mã hóa mật khẩu trước khi lưu vào cơ sở dữ liệu
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), 10)
 	if err != nil {
-		return c.Status(500).JSON(fiber.Map{"error": "Failed to hash password"})
+		return c.Status(500).JSON(fiber.Map{"error": "Lỗi khi ma hóa mật khẩu"})
 	}
 	user.Password = string(hashedPassword)
 
